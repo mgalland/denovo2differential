@@ -3,33 +3,48 @@
 ##############################################################################################################
 import os
 
+# configuration file for fastq file directory and other specific parameters
+configfile:"config.json" 
 
-FASTQDIR = "/home/mgalland/data/01_sequencing_runs/20151013_72523_InHolland/"
-#SAMPLES = list(set([s[0:3] for s in os.listdir(FASTQDIR)])) # set function allows to filter duplicate samples
+# TOOLS
+TRIMMOMATIC = "/zfs/datastore0/software/src/Trimmomatic-0.30/trimmomatic-0.30.jar"
 
+# Parameters taken from config file
+TRIMMOMATIC_PARAMS = config["trimmomatic_params"]
 
 DIRS = ["unzip","./trim/"]
 
-configfile:"config.json"
+
 
 rule all:
     input: 
-        expand("gunzip/{data}_{r}.fastq",data=config["data"],r=["R1","R2"])
-
-
+        expand("trim/{data}_{r}.fastq.gz",data=config["data"],r=["FP","FU","RP","RU"])
 
 
 ########### Rules ###################
-rule gunzip:
+
+
+
+####################################
+
+
+#####################################
+rule trimmomatic:
     input:
         forward = lambda wildcards: config["basedir"] + config["data"][wildcards.data]["forward"],
         reverse = lambda wildcards: config["basedir"] + config["data"][wildcards.data]["reverse"]
     output:
-        forward = "gunzip/{data}_R1.fastq",
-        reverse = "gunzip/{data}_R2.fastq"
-    message:"unzipping original files"
-    shell:"""
-          gunzip -c {input.forward} > {output.forward}
-          gunzip -c {input.reverse} > {output.reverse}
-	  """
+        FP = "trim/{data}_FP.fastq.gz", # forward paired
+        RP = "trim/{data}_RP.fastq.gz", # reverse paired
+        FU = "trim/{data}_FU.fastq.gz", # forward unpaired
+        RU = "trim/{data}_RU.fastq.gz"  # reverse unpaired
+    message:"Trimming {wildcards.data} file"
+    shell:"""java -jar {TRIMMOMATIC} PE {input.forward} {input.reverse} {output.FP} {output.FU} {output.RP} {output.RU} {TRIMMOMATIC_PARAMS}"""
 
+
+#        "java -jar {TRIMMOMATIC} PE"
+ #       "{input.forward} {input.reverse}"
+  #      "{output.FP} {output.FU}"
+#        "{output.RP} {output.RU}"
+#        "{config['trimmomatic_params']}"
+          
