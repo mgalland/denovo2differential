@@ -1,0 +1,36 @@
+{
+    "basedir": "/home/mgalland/data/01_sequencing_runs/20151013_72523_InHolland/",
+    "samples": {
+        "BR3": [
+            "BR3"
+        ],
+        "BR4": [
+            "BR4"
+        ],
+        "BR5": [
+            "BR5"
+        ],
+        "BR6": [
+            "BR6"
+        ]
+    },
+    "data": {
+        "BR3": {
+            "forward": "BR3_13589_TAGCTT_L001_R1_001_BHYFTLADXX.filt.fastq.gz",
+            "reverse": "BR3_13589_TAGCTT_L001_R2_001_BHYFTLADXX.filt.fastq.gz"
+        },
+        "BR4": {
+            "forward": "BR4_13590_GGCTAC_L001_R1_001_BHYFTLADXX.filt.fastq.gz",
+            "reverse": "BR4_13590_GGCTAC_L001_R2_001_BHYFTLADXX.filt.fastq.gz"
+        },
+        "BR5": {
+            "forward": "BR5_13591_AGTCAA_L001_R1_001_BHYFTLADXX.filt.fastq.gz",
+            "reverse": "BR5_13591_AGTCAA_L001_R2_001_BHYFTLADXX.filt.fastq.gz"
+        },
+        "BR6": {
+            "forward": "BR6_13592_AGTTCC_L001_R1_001_BHYFTLADXX.filt.fastq.gz",
+            "reverse": "BR6_13592_AGTTCC_L001_R2_001_BHYFTLADXX.filt.fastq.gz"
+        }
+    },
+    "adapters_fasta": "/zfs/datastore0/software/src/Trimmomatic-0.30/adapters/TruSeq3-PE.fa"
+}
