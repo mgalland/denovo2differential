@@ -33,5 +33,6 @@
         }
     },
     "adapters_fasta": "/zfs/datastore0/software/src/Trimmomatic-0.30/adapters/TruSeq3-PE.fa",
-    "trimmomatic_params":"ILLUMINACLIP:TruSeq3-PE.fa:2:30:10 LEADING:10 TRAILING:10 SLIDINGWINDOW:4:15 MINLEN:50"
+    "trimmomatic_params":"ILLUMINACLIP:TruSeq3-PE.fa:2:30:10 LEADING:10 TRAILING:10 SLIDINGWINDOW:4:15 MINLEN:50",
+    "trinity_params":"--SS_lib_type RF --max_memory 20G --CPU 8 --min_contig_length 200 --full_cleanup" 
 }
