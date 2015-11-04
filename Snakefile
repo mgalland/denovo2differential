@@ -4,26 +4,23 @@
 import os
 
 # configuration file for fastq file directory and other specific parameters
-configfile:"config_test.json" 
+configfile:"config.json" 
 
-# TOOLS
+# Trimmomatic (read trimming)
+TRIMMOMATIC_PARAMS = config["trimmomatic_params"]
 TRIMMOMATIC = "/zfs/datastore0/software/src/Trimmomatic-0.30/trimmomatic-0.30.jar"
 
-
-# Parameters taken from config file
-TRIMMOMATIC_PARAMS = config["trimmomatic_params"]
-TRINITY_PARAMS = config["trinity_params"]
-
-DIRS = ["unzip","./trim/"]
-
-
+# Trinity parameters
+TRINITY_ASSEMBLY_PARAMS = config["trinity_assembly_params"]
+TRINITY_ESTIMATE_ABUNDANCE = config["trinity_estimate_abundance"]
+TRINITY_ABUNDANCE_PARAMS = config["trinity_abundance_params"]
 
 rule all:
     input: 
         expand("trim/{data}_{r}.fastq.gz",data=config["data"],r=["FP","FU","RP","RU"]),
-        #expand("trinity/{data}.Trinity.fasta",data=config["data"]),
-        "trinity_out_dir.Trinity.fasta"
-
+        "trinity_out_dir.Trinity.fasta",
+        expand("express/{data}.results.xprs",data=config["data"])
+    message:"all done"
 
 ########### Rules ###################
 
@@ -38,7 +35,22 @@ rule all:
 ####################################
 
 # trinity_out_dir.Trinity.fasta
-
+rule transcript_abundance:
+    input:
+        FP = "trim/{data}_FP.fastq.gz",
+        RP = "trim/{data}_RP.fastq.gz",
+        assembly = "trinity_out_dir.Trinity.fasta"
+    output:
+        "express/{data}.results.xprs"
+    message:"estimating transcript abundance for {wildcards.data}"
+    params:"express/"
+    shell:
+        "{TRINITY_ESTIMATE_ABUNDANCE} --transcripts {input.assembly} "
+        "--seqType fq "
+        "--left {input.FP} --right {input.RP} "
+        "--output_dir {params} "
+        "{TRINITY_ABUNDANCE_PARAMS}"
+    
 
 rule denovo:
     input:
@@ -49,7 +61,7 @@ rule denovo:
     log:"assembly.log.txt"
     shell:
         "Trinity --seqType fq --left {input.left} --right {input.right} "
-        "{TRINITY_PARAMS} 2>{log}"
+        "{TRINITY_ASSEMBLY_PARAMS} 2>{log}"
 
 rule gzip:
     input:
@@ -58,7 +70,7 @@ rule gzip:
     output:
         left = "trim/all.left.fastq.gz",
         right = "trim/all.right.fastq.gz"
-    message:"gunzip concatenated left/rightread files"
+    message:"gunzip concatenated left/right read files"
     shell:"""
         gzip --force {input.left}
         gzip --force {input.right}
@@ -71,7 +83,7 @@ rule concatenate_reads:
     output:
         left = "trim/all.left.fastq",
         right = "trim/all.right.fastq"
-    message:"concatenating all left reads in one file" 
+    message:"concatenating all reads in one file" 
     shell:"""
         touch {output.left}
         touch {output.right}
