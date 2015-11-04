@@ -51,43 +51,34 @@ rule denovo:
         "Trinity --seqType fq --left {input.left} --right {input.right} "
         "{TRINITY_PARAMS} 2>{log}"
 
-
-rule zip_left:
+rule gzip:
     input:
-        left = "trim/all.left.fastq"
+        left = "trim/all.left.fastq",
+        right = "trim/all.right.fastq"
     output:
-        left = "trim/all.left.fastq.gz"
-    message:"gunzip concatenated left read files"
+        left = "trim/all.left.fastq.gz",
+        right = "trim/all.right.fastq.gz"
+    message:"gunzip concatenated left/rightread files"
     shell:"""
         gzip --force {input.left}
-	  """
-
-rule zip_right:
-    input:
-         right = "trim/all.right.fastq"
-    output:
-         right = "trim/all.right.fastq.gz"
-    message:"gunzip concatenated right read files"
-    shell:"""
         gzip --force {input.right}
 	  """
-rule concatenate_right_reads:
-    input:expand("trim/{data}_RP.fastq.gz",data=config["data"])
-    output:"trim/all.right.fastq"
-    message:"concatenating all right reads in one file" 
-    shell:"""
-        touch {output}
-	gunzip -d -c {input}| cat - >> {output}
-	"""
 
-rule concatenate_left_reads:
-    input:expand("trim/{data}_FP.fastq.gz",data=config["data"])
-    output:"trim/all.left.fastq"
+rule concatenate_reads:
+    input:
+        left = expand("trim/{data}_FP.fastq.gz",data=config["data"]),
+        right = expand("trim/{data}_RP.fastq.gz",data=config["data"])
+    output:
+        left = "trim/all.left.fastq",
+        right = "trim/all.right.fastq"
     message:"concatenating all left reads in one file" 
     shell:"""
-        touch {output}
-	gunzip -d -c {input}| cat - >> {output}
+        touch {output.left}
+        touch {output.right}
+	gunzip -d -c {input.left}| cat - >> {output.left}
+	gunzip -d -c {input.right}| cat - >> {output.right}
 	"""
+
 
 ####################################
 #rule single_denovo:
