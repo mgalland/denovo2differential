@@ -19,31 +19,33 @@ rule all:
     input: 
         expand("trim/{data}_{r}.fastq.gz",data=config["data"],r=["FP","FU","RP","RU"]),
         "trinity_out_dir.Trinity.fasta",
-        expand("express/{data}.results.xprs",data=config["data"])
+        expand("express/{data}/results.xprs",data=config["data"])
     message:"all done"
+
+
 
 ########### Rules ###################
 
 
-####################################
-# rule annotation of de novo assembled transcripts
+
+###################################################
+# rule annotation of de novo assembled transcripts#
+###################################################
+
 
 
 ####################################
 # rule quantification with eXpress
-
-####################################
-
-# trinity_out_dir.Trinity.fasta
+###################################
 rule transcript_abundance:
     input:
         FP = "trim/{data}_FP.fastq.gz",
         RP = "trim/{data}_RP.fastq.gz",
         assembly = "trinity_out_dir.Trinity.fasta"
     output:
-        "express/{data}.results.xprs"
+        res = "express/{data}/results.xprs"        
     message:"estimating transcript abundance for {wildcards.data}"
-    params:"express/"
+    params:"express/{data}/"
     shell:
         "{TRINITY_ESTIMATE_ABUNDANCE} --transcripts {input.assembly} "
         "--seqType fq "
@@ -90,21 +92,6 @@ rule concatenate_reads:
 	gunzip -d -c {input.left}| cat - >> {output.left}
 	gunzip -d -c {input.right}| cat - >> {output.right}
 	"""
-
-
-####################################
-#rule single_denovo:
- #   input:
-  #      FP = "trim/{data}_FP.fastq.gz",
-   #     RP = "trim/{data}_RP.fastq.gz"
-  #  output:"trinity/{data}/Trinity.fasta"
-  #  message:"de novo assembly of {wildcards.data} transcripts using Trinity - single assembly"
-  #  log:"trinity/{data}_trinity_log.txt"
-  #  shell:
-   #     "mkdir -p ./assembly/{wildcards.data}/
-    #    "Trinity --seqType fq --left {input.FP} --right {input.RP} "
-     #   "{TRINITY_PARAMS} 2>{log}|"
-      #  "mv trinity_out_dir.Trinity.fasta /trinity/{ 
 
 #####################################
 rule trimmomatic:
