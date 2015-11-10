@@ -2,6 +2,7 @@
 # Produce de novo assembly of RNA-Seq reads + differential analysis + annotation of the assembled transcripts#
 ##############################################################################################################
 import os
+from Bio import SeqIO
 
 # configuration file for fastq file directory and other specific parameters
 configfile:"config.json" 
@@ -15,11 +16,21 @@ TRINITY_ASSEMBLY_PARAMS = config["trinity_assembly_params"]
 TRINITY_ESTIMATE_ABUNDANCE = config["trinity_estimate_abundance"]
 TRINITY_ABUNDANCE_PARAMS = config["trinity_abundance_params"]
 
+
+
+####### Outputs ######
+TRIMMED_READS = expand("trim/{data}_{r}.fastq.gz",data=config["data"],r=["FP","FU","RP","RU"])
+ASSEMBLY = "trinity/trinity_out_dir.Trinity.fasta"
+EXPRESS_XPRS = expand("express/{data}/results.xprs",data=config["data"])
+ASSEMBLY_SHORT_NAMES = "trinity/trinity_out_dir.Trinity.shortnames.fasta"
+
+
 rule all:
     input: 
-        expand("trim/{data}_{r}.fastq.gz",data=config["data"],r=["FP","FU","RP","RU"]),
-        "trinity_out_dir.Trinity.fasta",
-        expand("express/{data}/results.xprs",data=config["data"])
+        TRIMMED_READS,
+        ASSEMBLY,
+        EXPRESS_XPRS,
+        ASSEMBLY_SHORT_NAMES
     message:"all done"
 
 
@@ -31,6 +42,19 @@ rule all:
 ###################################################
 # rule annotation of de novo assembled transcripts#
 ###################################################
+rule shorten_seq_names:
+    input:
+        "trinity/trinity_out_dir.Trinity.fasta"
+    output:
+        "trinity/trinity_out_dir.Trinity.shortnames.fasta"
+    message:"shorten sequence names in Trinity assembly fasta file"
+    run:
+        with open(input[0],"r") as filin, open(output[0],"w") as fileout:
+            records = []
+            for record in SeqIO.parse(filin,"fasta"):
+                short_name = record.id.split(" ")[0]
+                records.append(SeqRecord(record.seq,id=short_name))
+            SeqIO.write(records,fileout,"fasta")        
 
 
 
@@ -41,7 +65,7 @@ rule transcript_abundance:
     input:
         FP = "trim/{data}_FP.fastq.gz",
         RP = "trim/{data}_RP.fastq.gz",
-        assembly = "trinity_out_dir.Trinity.fasta"
+        assembly = "trinity/trinity_out_dir.Trinity.fasta"
     output:
         res = "express/{data}/results.xprs"        
     message:"estimating transcript abundance for {wildcards.data}"
@@ -58,12 +82,13 @@ rule denovo:
     input:
         left = "trim/all.left.fastq.gz",
         right = "trim/all.right.fastq.gz"
-    output:"trinity_out_dir.Trinity.fasta"
+    output:protected("trinity/trinity_out_dir.Trinity.fasta")
     message:"de novo assembly of all reads"
     log:"assembly.log.txt"
     shell:
         "Trinity --seqType fq --left {input.left} --right {input.right} "
-        "{TRINITY_ASSEMBLY_PARAMS} 2>{log}"
+        "{TRINITY_ASSEMBLY_PARAMS} 2>{log};"
+        "mv trinity_out* trinity/"
 
 rule gzip:
     input:
