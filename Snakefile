@@ -3,6 +3,7 @@
 ##############################################################################################################
 import os
 from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
 
 # configuration file for fastq file directory and other specific parameters
 configfile:"config.json" 
@@ -16,13 +17,12 @@ TRINITY_ASSEMBLY_PARAMS = config["trinity_assembly_params"]
 TRINITY_ESTIMATE_ABUNDANCE = config["trinity_estimate_abundance"]
 TRINITY_ABUNDANCE_PARAMS = config["trinity_abundance_params"]
 
-
-
 ####### Outputs ######
 TRIMMED_READS = expand("trim/{data}_{r}.fastq.gz",data=config["data"],r=["FP","FU","RP","RU"])
 ASSEMBLY = "trinity/trinity_out_dir.Trinity.fasta"
 EXPRESS_XPRS = expand("express/{data}/results.xprs",data=config["data"])
-ASSEMBLY_SHORT_NAMES = "trinity/trinity_out_dir.Trinity.shortnames.fasta"
+ASSEMBLY_SHORTNAMES_NR = "trinity/trinity_out_dir.Trinity.shortnames.nr.fasta"
+BLASTN = "blastn/trinity.outfmt6"
 
 
 rule all:
@@ -30,18 +30,33 @@ rule all:
         TRIMMED_READS,
         ASSEMBLY,
         EXPRESS_XPRS,
-        ASSEMBLY_SHORT_NAMES
+        ASSEMBLY_SHORTNAMES_NR,
+        BLASTN
     message:"all done"
-
-
-
-########### Rules ###################
-
 
 
 ###################################################
 # rule annotation of de novo assembled transcripts#
 ###################################################
+rule blastn:
+    input:
+        "trinity/trinity_out_dir.Trinity.shortnames.fasta"
+    output:
+        "blastn/trinity.outfmt6"
+    message:"blastn of the Trinity assembled transcripts"
+    params:
+        db = lambda wildcards: config["blastn"]["db"],
+        targets = lambda wildcards: config["blastn"]["max_target_seqs"],
+        threads = lambda wildcards: config["blastn"]["num_threads"],
+        outfmt = lambda wildcards: config["blastn"]["outfmt"],
+        hsps = lambda wildcards: config["blastn"]["max_hsps"]
+    shell:
+        "blastn -db {params.db} -query {input} -out {output}"
+        "-max_targets {params.targets} "
+        "-num_threads {params.threads} "
+        "-outfmt {params.outfmt} "
+        "-max_hsps {params.hsps}"
+
 rule shorten_seq_names:
     input:
         "trinity/trinity_out_dir.Trinity.fasta"
@@ -55,8 +70,6 @@ rule shorten_seq_names:
                 short_name = record.id.split(" ")[0]
                 records.append(SeqRecord(record.seq,id=short_name))
             SeqIO.write(records,fileout,"fasta")        
-
-
 
 ####################################
 # rule quantification with eXpress
