@@ -51,11 +51,22 @@ rule blastn:
         outfmt = lambda wildcards: config["blastn"]["outfmt"],
         hsps = lambda wildcards: config["blastn"]["max_hsps"]
     shell:
-        "blastn -db {params.db} -query {input} -out {output}"
-        "-max_targets {params.targets} "
+        "blastn -db {params.db} -query {input} -out {output} "
+        "-max_target_seqs {params.targets} "
         "-num_threads {params.threads} "
         "-outfmt {params.outfmt} "
         "-max_hsps {params.hsps}"
+
+#ule update_blastdb:
+  #  input:
+   #     lambda wildcards: config["blastdbdir"]
+   # output:
+    #message:
+    #params:lambda wildcards: config["blast"]["dir"]
+    #shell:
+    #    "gunzip /home/mgall"
+    #    "cat *.tar | tar -xvf - -i "
+        
 
 rule shorten_seq_names:
     input:
