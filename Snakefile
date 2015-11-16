@@ -9,35 +9,73 @@ from Bio.SeqRecord import SeqRecord
 configfile:"config.json" 
 
 # Trimmomatic (read trimming)
-TRIMMOMATIC_PARAMS = config["trimmomatic_params"]
-TRIMMOMATIC = "/zfs/datastore0/software/src/Trimmomatic-0.30/trimmomatic-0.30.jar"
+TRIMMOMATIC = config["trimmomatic"]["jar"]
+TRIMMOMATIC_PARAMS = config["trimmomatic"]["params"]
 
-# Trinity parameters
-TRINITY_ASSEMBLY_PARAMS = config["trinity_assembly_params"]
-TRINITY_ESTIMATE_ABUNDANCE = config["trinity_estimate_abundance"]
-TRINITY_ABUNDANCE_PARAMS = config["trinity_abundance_params"]
+# Trinity & related tools parameters 
+TRINITY_ASSEMBLY_PARAMS = config["trinity"]["assembly_params"]
+TRINITY_ESTIMATE_ABUNDANCE = config["trinity"]["estimate_abundance"]
+TRINITY_ABUNDANCE_PARAMS = config["trinity"]["abundance_params"]
+TRANSDECODER = config["transdecoder"]["dir"]
+TRANSDECODER_MIN_PROT_LENGTH = config["transdecoder"]["min_prot_length"]
+TRANSDECODER_MIN_ORF_NUCLEOTIDE_LENGTH = config["transdecoder"]["min_orf_nucleotide_length"]
 
 ####### Outputs ######
 TRIMMED_READS = expand("trim/{data}_{r}.fastq.gz",data=config["data"],r=["FP","FU","RP","RU"])
 ASSEMBLY = "trinity/trinity_out_dir.Trinity.fasta"
-EXPRESS_XPRS = expand("express/{data}/results.xprs",data=config["data"])
+QC_MAPPING = "qc/mapping.txt"
+XPRS = expand("transcript_abundance/{data}/results.xprs",data=config["data"])
 ASSEMBLY_SHORTNAMES_NR = "trinity/trinity_out_dir.Trinity.shortnames.nr.fasta"
 BLASTN = "blastn/trinity.outfmt6"
-
+VERSIONS = "report/software_versions.txt"
 
 rule all:
     input: 
         TRIMMED_READS,
         ASSEMBLY,
-        EXPRESS_XPRS,
+	QC_MAPPING,
+        XPRS,
         ASSEMBLY_SHORTNAMES_NR,
-        BLASTN
+        BLASTN,
+        VERSIONS
     message:"all done"
+
+
+###################################################
+# Report
+###################################################
+rule software_verions:
+    output:
+        "report/software_versions.txt"
+    message:"compiling tool versions"
+    run:
+        shell("mkdir -p report/")
+        shell("Trinity --version > report/software_versions.txt")
+        trimmomatic_version = os.path.basename(TRIMMOMATIC)
+        shell("cat {trimmomatic_version} >> report/software_versions.txt")
+        shell("bowtie2 --version |head -1 >> report/software_versions.txt")
+        shell("blastn -h |grep -A1 'DESCRIPTION' >> report/software_versions.txt")
+        shell("express --help 2>test.txt; cat test.txt |head -2 >> report/software_versions.txt;rm test.txt")
+        
+
+
 
 
 ###################################################
 # rule annotation of de novo assembled transcripts#
 ###################################################
+
+
+# rule blastp search + PFAM search
+
+rule trinity_transdecoder:
+    input:"trinity/trinity_out_dir.Trinity.fasta"
+    output:"transcripts.fasta.transdecoder.pep"
+    message:"predicting ORF within transcripts"
+    shell:
+        "{TRANSDECODER} -t {input} -m" 
+        "mv transcripts.fasta.transdecoder.pep trinity/transcripts.fasta.transdecoder.pep"
+
 rule blastn:
     input:
         "trinity/trinity_out_dir.Trinity.shortnames.fasta"
@@ -56,18 +94,7 @@ rule blastn:
         "-num_threads {params.threads} "
         "-outfmt {params.outfmt} "
         "-max_hsps {params.hsps}"
-
-#ule update_blastdb:
-  #  input:
-   #     lambda wildcards: config["blastdbdir"]
-   # output:
-    #message:
-    #params:lambda wildcards: config["blast"]["dir"]
-    #shell:
-    #    "gunzip /home/mgall"
-    #    "cat *.tar | tar -xvf - -i "
-        
-
+    
 rule shorten_seq_names:
     input:
         "trinity/trinity_out_dir.Trinity.fasta"
@@ -85,13 +112,13 @@ rule shorten_seq_names:
 ####################################
 # rule quantification with eXpress
 ###################################
-rule transcript_abundance:
+rule estimate_transcript_abundance:
     input:
         FP = "trim/{data}_FP.fastq.gz",
         RP = "trim/{data}_RP.fastq.gz",
         assembly = "trinity/trinity_out_dir.Trinity.fasta"
     output:
-        res = "express/{data}/results.xprs"        
+        res = "transcript_abundance/{data}/results.xprs"        
     message:"estimating transcript abundance for {wildcards.data}"
     params:"express/{data}/"
     shell:
@@ -100,8 +127,26 @@ rule transcript_abundance:
         "--left {input.FP} --right {input.RP} "
         "--output_dir {params} "
         "{TRINITY_ABUNDANCE_PARAMS}"
-    
 
+###################################
+# QC of the assembly
+###################################
+rule map2contigs:
+    input:
+        left = "trim/all.left.fastq.gz",
+        right = "trim/all.right.fastq.gz",
+        assembly = "trinity/trinity_out_dir.Trinity.fasta"
+    output:
+        log = "qc/mapping.txt",
+        sam = "qc/mapping.sam"
+    message:"mapping reads back to Trinity assembly to estimate quality of assembly"
+    shell:
+        "bowtie2-build {input.assembly} trinity/assembly ;"
+        "bowtie2 -x trinity/assembly -1 {input.left} -2 {input.right} -S {output.sam} 2>{output.log}"
+
+#####################################    
+# de novo assembly of the reads
+######################################
 rule denovo:
     input:
         left = "trim/all.left.fastq.gz",
