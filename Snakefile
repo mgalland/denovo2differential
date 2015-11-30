@@ -8,6 +8,12 @@ from Bio.SeqRecord import SeqRecord
 # configuration file for fastq file directory and other specific parameters
 configfile:"config.json" 
 
+# input sequencing files
+DIR454 = config["454"]["dir"]
+DICT_454 = config["454"]["data"]
+FILES_454 = [os.path.join(DIR454,f) for f in list(DICT_454.values())]
+NAMES_454 = list(DICT_454.keys())
+
 # Trimmomatic (read trimming)
 TRIMMOMATIC = config["trimmomatic"]["jar"]
 TRIMMOMATIC_PARAMS = config["trimmomatic"]["params"]
@@ -20,18 +26,23 @@ TRANSDECODER = config["transdecoder"]["dir"]
 TRANSDECODER_MIN_PROT_LENGTH = config["transdecoder"]["min_prot_length"]
 TRANSDECODER_MIN_ORF_NUCLEOTIDE_LENGTH = config["transdecoder"]["min_orf_nucleotide_length"]
 
+# BLAST
+BLAST_HEADER = config["blastn"]["outfmt"]
+
 ####### Outputs ######
-TRIMMED_READS = expand("trim/{data}_{r}.fastq.gz",data=config["data"],r=["FP","FU","RP","RU"])
+QUALS = expand("trim/{data}.png",data=config["454"]["data"])
+ILLUMINA_TRIMMED_READS = expand("trim/{illumina}_{r}.fastq.gz",illumina=config["illumina"],r=["FP","FU","RP","RU"])
 ASSEMBLY = "trinity/trinity_out_dir.Trinity.fasta"
 QC_MAPPING = "qc/mapping.txt"
-XPRS = expand("transcript_abundance/{data}/results.xprs",data=config["data"])
+XPRS = expand("transcript_abundance/{illumina}/results.xprs",illumina=config["illumina"])
 ASSEMBLY_SHORTNAMES_NR = "trinity/trinity_out_dir.Trinity.shortnames.nr.fasta"
 BLASTN = "blastn/trinity.outfmt6"
 VERSIONS = "report/software_versions.txt"
 
 rule all:
     input: 
-        TRIMMED_READS,
+        ILLUMINA_TRIMMED_READS,
+	QUALS,
         ASSEMBLY,
 	QC_MAPPING,
         XPRS,
@@ -57,9 +68,6 @@ rule software_verions:
         shell("blastn -h |grep -A1 'DESCRIPTION' >> report/software_versions.txt")
         shell("express --help 2>test.txt; cat test.txt |head -2 >> report/software_versions.txt;rm test.txt")
         
-
-
-
 
 ###################################################
 # rule annotation of de novo assembled transcripts#
@@ -114,13 +122,13 @@ rule shorten_seq_names:
 ###################################
 rule estimate_transcript_abundance:
     input:
-        FP = "trim/{data}_FP.fastq.gz",
-        RP = "trim/{data}_RP.fastq.gz",
+        FP = "trim/{illumina}_FP.fastq.gz",
+        RP = "trim/{illumina}_RP.fastq.gz",
         assembly = "trinity/trinity_out_dir.Trinity.fasta"
     output:
-        res = "transcript_abundance/{data}/results.xprs"        
-    message:"estimating transcript abundance for {wildcards.data}"
-    params:"express/{data}/"
+        res = "transcript_abundance/{illumina}/results.xprs"        
+    message:"estimating transcript abundance for {wildcards.illumina}"
+    params:"express/{illumina}/"
     shell:
         "{TRINITY_ESTIMATE_ABUNDANCE} --transcripts {input.assembly} "
         "--seqType fq "
@@ -174,8 +182,8 @@ rule gzip:
 
 rule concatenate_reads:
     input:
-        left = expand("trim/{data}_FP.fastq.gz",data=config["data"]),
-        right = expand("trim/{data}_RP.fastq.gz",data=config["data"])
+        left = expand("trim/{illumina}_FP.fastq.gz",illumina=config["illumina"]),
+        right = expand("trim/{illumina}_RP.fastq.gz",illumina=config["illumina"])
     output:
         left = "trim/all.left.fastq",
         right = "trim/all.right.fastq"
@@ -186,19 +194,43 @@ rule concatenate_reads:
 	gunzip -d -c {input.left}| cat - >> {output.left}
 	gunzip -d -c {input.right}| cat - >> {output.right}
 	"""
-
 #####################################
-rule trimmomatic:
+rule fastx_boxplot:
     input:
-        forward = lambda wildcards: config["basedir"] + config["data"][wildcards.data]["forward"],
-        reverse = lambda wildcards: config["basedir"] + config["data"][wildcards.data]["reverse"]
+        "trim/{data}.trimmed.stats.txt"
     output:
-        FP = "trim/{data}_FP.fastq.gz", # forward paired
-        RP = "trim/{data}_RP.fastq.gz", # reverse paired
-        FU = "trim/{data}_FU.fastq.gz", # forward unpaired
-        RU = "trim/{data}_RU.fastq.gz"  # reverse unpaired
-    message:"Trimming {wildcards.data} file"
-    log:"trim/{data}_log.txt"
+        "trim/{data}.png"
+    message:"generating boxplot for quality scores for {wildcards.data}"
+    shell:"fastq_quality_boxplot_graph.sh -i {input} -o {output} -t {wildcards.data}"
+
+rule fastx_quality_stats:
+    input:
+        "trim/{data}.trimmed.fastq"
+    output:
+        "trim/{data}.trimmed.stats.txt"
+    message:"generating fastx quality stats for {wildcards.data}"
+    shell:"fastx_quality_stats -i {input} -o {output}"
+    
+rule fastx_quality_filter:
+    input: 
+        reads = lambda wildcards: config["454"]["dir"] + config["454"]["data"][wildcards.data]      
+    output: "trim/{data}.trimmed.fastq"
+    message:"trimming {input.reads} file"
+    log:"fastq/{wildcards.data}.log.txt"
+    shell:"fastq_quality_filter -v -q 10 -p 80 -i {input.reads} -o {output} 2>{log}"
+
+#########################################
+rule trimmomatic_for_Illumina:
+    input:
+        forward = lambda wildcards: config["basedir"] + config["illumina"][wildcards.illumina]["forward"],
+        reverse = lambda wildcards: config["basedir"] + config["illumina"][wildcards.illumina]["reverse"]
+    output:
+        FP = "trim/{illumina}_FP.fastq.gz", # forward paired
+        RP = "trim/{illumina}_RP.fastq.gz", # reverse paired
+        FU = "trim/{illumina}_FU.fastq.gz", # forward unpaired
+        RU = "trim/{illumina}_RU.fastq.gz"  # reverse unpaired
+    message:"Trimming {wildcards.illumina} file"
+    log:"trim/{illumina}_log.txt"
     shell:
         "java -jar {TRIMMOMATIC} PE -phred33 {input.forward} {input.reverse} "
         "{output.FP} {output.FU} {output.RP} {output.RU} "
