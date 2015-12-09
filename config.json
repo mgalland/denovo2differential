@@ -32,19 +32,30 @@
 		"params": "ILLUMINACLIP:TruSeq3-PE.fa:2:30:10 LEADING:10 TRAILING:10 SLIDINGWINDOW:4:15 MINLEN:50"
 	},
 	"trinity": {
+		"utils": "/zfs/datastore0/software/src/trinityrnaseq/util/",
 		"assembly_params": "--SS_lib_type RF --max_memory 20G --CPU 3 --min_contig_length 200 --full_cleanup",
 		"estimate_abundance": "/zfs/datastore0/software/src/trinityrnaseq/util/align_and_estimate_abundance.pl",
 		"abundance_params": "--aln_method bowtie2 --SS_lib_type RF --est_method eXpress --trinity_mode --prep_reference"
 	},
 	"blast": {
-		"dir": "/home/mgalland/blastdb/",
+		"dbdir": "/home/mgalland/blastdb/",
+		"db": {
+			"nt": "nt",
+			"swissprot": "uniprot_sprot.fasta",
+			"nr": "nr"
+		},
 		"blastn": {
-			"blastn": {
-				"db": "/home/mgalland/blastdb/nt",
-				"max_target_seqs": "1",
-				"num_threads": "8",
-				"outfmt": "'6 qseqid qlen sseqid stitle slen pident evalue bitscore length'",
-				"max_hsps": "1"
+			"params": {
+				"max_target_seqs": "-max_target_seqs 1",
+				"outfmt": "-outfmt '6 qseqid qlen sseqid stitle slen pident evalue bitscore length'",
+				"max_hsps": "-max_hsps 1"
+			}
+		},
+		"blastp": {
+			"params": {
+				"max_target_seqs": "-max_target_seqs 1",
+				"outfmt": "-outfmt '6 qseqid qlen sseqid stitle slen pident evalue bitscore length'",
+				"max_hsps": "-max_hsps 1"
 			}
 		}
 	},
