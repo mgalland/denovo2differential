@@ -2,17 +2,14 @@
 # Produce de novo assembly of RNA-Seq reads + differential analysis + annotation of the assembled transcripts#
 ##############################################################################################################
 import os
+import io
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
+import subprocess
+from denovotools import stdout_redirector
 
 # configuration file for fastq file directory and other specific parameters
 configfile:"config.json" 
-
-# input sequencing files
-DIR454 = config["454"]["dir"]
-DICT_454 = config["454"]["data"]
-FILES_454 = [os.path.join(DIR454,f) for f in list(DICT_454.values())]
-NAMES_454 = list(DICT_454.keys())
 
 # Trimmomatic (read trimming)
 TRIMMOMATIC = config["trimmomatic"]["jar"]
@@ -22,21 +19,28 @@ TRIMMOMATIC_PARAMS = config["trimmomatic"]["params"]
 TRINITY_ASSEMBLY_PARAMS = config["trinity"]["assembly_params"]
 TRINITY_ESTIMATE_ABUNDANCE = config["trinity"]["estimate_abundance"]
 TRINITY_ABUNDANCE_PARAMS = config["trinity"]["abundance_params"]
+TRINITY_UTILS = config["trinity"]["utils"]
 TRANSDECODER = config["transdecoder"]["dir"]
 TRANSDECODER_MIN_PROT_LENGTH = config["transdecoder"]["min_prot_length"]
 TRANSDECODER_MIN_ORF_NUCLEOTIDE_LENGTH = config["transdecoder"]["min_orf_nucleotide_length"]
 
 # BLAST
-BLAST_HEADER = config["blastn"]["outfmt"]
+BLAST_HEADER = config["blast"]["blastn"]["params"]["outfmt"]
+BLASTN_PARAMS = list(config["blast"]["blastn"]["params"].values())
+BLASTP_PARAMS = list(config["blast"]["blastp"]["params"].values())
+
+# THREADS
+THREADS = 8
 
 ####### Outputs ######
-QUALS = expand("trim/{data}.png",data=config["454"]["data"])
+QUALS = expand("plots/{data}.quality_boxplot.png",data=config["454"]["data"])
 ILLUMINA_TRIMMED_READS = expand("trim/{illumina}_{r}.fastq.gz",illumina=config["illumina"],r=["FP","FU","RP","RU"])
 ASSEMBLY = "trinity/trinity_out_dir.Trinity.fasta"
 QC_MAPPING = "qc/mapping.txt"
-XPRS = expand("transcript_abundance/{illumina}/results.xprs",illumina=config["illumina"])
-ASSEMBLY_SHORTNAMES_NR = "trinity/trinity_out_dir.Trinity.shortnames.nr.fasta"
-BLASTN = "blastn/trinity.outfmt6"
+TRINITY_XPRS = expand("transcript_abundance/{illumina}/results.xprs",illumina=config["illumina"])
+TRINITY_PEP = "trinity/transcripts.fasta.transdecoder.pep"
+BLASTN = "blast/trinity_vs_nt.outfmt6"
+BLASTP = ["blast/trinitry_vs_swissprot.outfmt6","blast/trinity_vs_Rgenes.outfmt6","blast/trinity_vs_carotenoids.outfmt6","blast/trinity_vs_anthocyanins.outfmt6"]
 VERSIONS = "report/software_versions.txt"
 
 rule all:
@@ -45,9 +49,9 @@ rule all:
 	QUALS,
         ASSEMBLY,
 	QC_MAPPING,
-        XPRS,
-        ASSEMBLY_SHORTNAMES_NR,
+        TRINITY_XPRS,
         BLASTN,
+	BLASTP,
         VERSIONS
     message:"all done"
 
@@ -55,53 +59,96 @@ rule all:
 ###################################################
 # Report
 ###################################################
-rule software_verions:
+rule software_versions:
     output:
         "report/software_versions.txt"
     message:"compiling tool versions"
     run:
         shell("mkdir -p report/")
-        shell("Trinity --version > report/software_versions.txt")
         trimmomatic_version = os.path.basename(TRIMMOMATIC)
-        shell("cat {trimmomatic_version} >> report/software_versions.txt")
-        shell("bowtie2 --version |head -1 >> report/software_versions.txt")
-        shell("blastn -h |grep -A1 'DESCRIPTION' >> report/software_versions.txt")
-        shell("express --help 2>test.txt; cat test.txt |head -2 >> report/software_versions.txt;rm test.txt")
-        
+        shell("Trinity --version |cat >> {output}")
+        shell("bowtie2 --version |cat >> {output}")
+        shell("blastn -h |cat >> {output}")
+        shell("express --help |cat >> {output}")
+        with open(output[0],"w") as fileout:
+            fileout.write(trimmomatic_version + "\n")
+
+
+###################################################
+## Filter blastp output
+########################
 
 ###################################################
 # rule annotation of de novo assembled transcripts#
 ###################################################
+rule blastp_against_anthocyanins:
+    input:"trinity/trinity_out_dir.Trinity.shortnames.fasta.transdecoder.pep"
+    output:"blast/trinity_vs_anthocyanins.outfmt6"
+    message:"blasting against anthocyanins genes"
+    shell:
+        "blastp -db /home/mgalland/data/02_refs/tulip/anthocyanins.fasta "
+        "{BLASTP_PARAMS} "
+        "-query {input} -out {output} "
+        "-num_threads {THREADS}"
 
 
-# rule blastp search + PFAM search
+rule blastp_against_carotenoids:
+    input:"trinity/trinity_out_dir.Trinity.shortnames.fasta.transdecoder.pep"
+    output:"blast/trinity_vs_carotenoids.outfmt6"
+    message:"blasting against carotenoid genes"
+    shell:
+        "blastp -db /home/mgalland/data/02_refs/tulip/carotenoids.fasta "
+        "{BLASTP_PARAMS} "
+        "-query {input} -out {output} "
+        "-num_threads {THREADS}"
+
+rule blastp_against_Rgenes:
+    input:"trinity/trinity_out_dir.Trinity.shortnames.fasta.transdecoder.pep"
+    output:"blast/trinity_vs_Rgenes.outfmt6"
+    message:"blasting against R genes"
+    shell:
+        "blastp -db /home/mgalland/data/02_refs/tulip/R_genes.fasta "
+        "{BLASTP_PARAMS} "
+        "-query {input} -out {output} "
+        "-num_threads {THREADS}"
+
+rule blastp_against_swissprot:
+    input:"trinity/trinity_out_dir.Trinity.shortnames.fasta.transdecoder.pep"
+    output:"blast/trinitry_vs_swissprot.outfmt6"
+    message:"blastp {input} against swissprot"
+    params:
+        db = config["blast"]["dbdir"] + config["blast"]["db"]["swissprot"]   
+    shell:
+        "blastp -db {params.db} "
+        "{BLASTP_PARAMS} "
+        "-query {input} -out {output} "
+        "-num_threads {THREADS}"
+ 
 
 rule trinity_transdecoder:
-    input:"trinity/trinity_out_dir.Trinity.fasta"
-    output:"transcripts.fasta.transdecoder.pep"
+    input:"trinity/trinity_out_dir.Trinity.shortnames.fasta"
+    output:"trinity/trinity_out_dir.Trinity.shortnames.fasta.transdecoder.pep"
     message:"predicting ORF within transcripts"
     shell:
-        "{TRANSDECODER} -t {input} -m" 
-        "mv transcripts.fasta.transdecoder.pep trinity/transcripts.fasta.transdecoder.pep"
+        "{TRANSDECODER} -t {input} {TRANSDECODER_MIN_PROT_LENGTH} "
+        "{TRANSDECODER_MIN_ORF_NUCLEOTIDE_LENGTH} "
+        "--CPU {THREADS};" 
+        "mv trinity_out_dir* trinity/;"
+        "rm -r transdecoder.tmp*"
 
 rule blastn:
     input:
         "trinity/trinity_out_dir.Trinity.shortnames.fasta"
     output:
-        "blastn/trinity.outfmt6"
+        "blast/trinity_vs_nt.outfmt6"
     message:"blastn of the Trinity assembled transcripts"
-    params:
-        db = lambda wildcards: config["blastn"]["db"],
-        targets = lambda wildcards: config["blastn"]["max_target_seqs"],
-        threads = lambda wildcards: config["blastn"]["num_threads"],
-        outfmt = lambda wildcards: config["blastn"]["outfmt"],
-        hsps = lambda wildcards: config["blastn"]["max_hsps"]
+    params: 
+        db = config["blast"]["dbdir"] + config["blast"]["db"]["nt"]   
     shell:
-        "blastn -db {params.db} -query {input} -out {output} "
-        "-max_target_seqs {params.targets} "
-        "-num_threads {params.threads} "
-        "-outfmt {params.outfmt} "
-        "-max_hsps {params.hsps}"
+        "blastn -db {params.db} "
+        "{BLASTN_PARAMS} "
+        "-query {input} -out {output} "
+        "-num_threads {THREADS}"
     
 rule shorten_seq_names:
     input:
@@ -120,6 +167,14 @@ rule shorten_seq_names:
 ####################################
 # rule quantification with eXpress
 ###################################
+rule abundance_estimates_to_matrix:
+    input: "transcript_abundance/{illumina}/results.xprs" 
+    output:"transcript_abundance/matrix.TMM.EXPR.matrix"
+    message:"TMM normalization of eXpress values"
+    params:"transcript_abundance/*/results.xprs"
+    run:
+        shell(TRINITY_UTILS + "abundance_estimates_to_matrix.pl --est_method eXpress --name_sample_by_basedir {params}")
+
 rule estimate_transcript_abundance:
     input:
         FP = "trim/{illumina}_FP.fastq.gz",
@@ -194,12 +249,15 @@ rule concatenate_reads:
 	gunzip -d -c {input.left}| cat - >> {output.left}
 	gunzip -d -c {input.right}| cat - >> {output.right}
 	"""
+
+#####################################
+# Trimming and QC of 454 reads
 #####################################
 rule fastx_boxplot:
     input:
         "trim/{data}.trimmed.stats.txt"
     output:
-        "trim/{data}.png"
+        "plots/{data}.quality_boxplot.png"
     message:"generating boxplot for quality scores for {wildcards.data}"
     shell:"fastq_quality_boxplot_graph.sh -i {input} -o {output} -t {wildcards.data}"
 
@@ -219,8 +277,16 @@ rule fastx_quality_filter:
     log:"fastq/{wildcards.data}.log.txt"
     shell:"fastq_quality_filter -v -q 10 -p 80 -i {input.reads} -o {output} 2>{log}"
 
-#########################################
-rule trimmomatic_for_Illumina:
+##############################################
+# Trimming and QC of Illumina paired-end reads
+##############################################
+rule fastx_quality_stats_for_illumina:
+    input: 
+        FP = "trim/{illumina}_FP.fastq.gz",
+        RP = "trim/{illumina}_RP.fastq.gz"
+    output:
+
+rule trimmomatic_for_IlluminaPE:
     input:
         forward = lambda wildcards: config["basedir"] + config["illumina"][wildcards.illumina]["forward"],
         reverse = lambda wildcards: config["basedir"] + config["illumina"][wildcards.illumina]["reverse"]
