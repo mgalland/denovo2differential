@@ -37,7 +37,7 @@ QUALS = expand("plots/{data}.quality_boxplot.png",data=config["454"]["data"])
 ILLUMINA_TRIMMED_READS = expand("trim/{illumina}_{r}.fastq.gz",illumina=config["illumina"],r=["FP","FU","RP","RU"])
 ASSEMBLY = "trinity/trinity_out_dir.Trinity.fasta"
 QC_MAPPING = "qc/mapping.txt"
-SAMS = expand("qc/{illumina}.mapping.sam",illumina=config["illumina"])
+BAMS = expand("qc/{illumina}.mapping.sorted.bam",illumina=config["illumina"])
 TRINITY_XPRS = expand("transcript_abundance/{illumina}/results.xprs",illumina=config["illumina"])
 TRINITY_PEP = "trinity/transcripts.fasta.transdecoder.pep"
 BLASTN = "blast/trinity_vs_nt.outfmt6"
@@ -50,7 +50,7 @@ rule all:
 	QUALS,
         ASSEMBLY,
 	QC_MAPPING,
-	SAMS,
+	BAMS,
         TRINITY_XPRS,
         BLASTN,
 	BLASTP,
@@ -209,6 +209,21 @@ rule map_all2contigs:
         "bowtie2-build {input.assembly} trinity/assembly ;"
         "bowtie2 -x trinity/assembly -1 {input.left} -2 {input.right} -S {output.sam} 2>{output.log}"
 
+rule spikes_sam2bam_sort_index:
+    input: "qc/{illumina}.mapping.sam"
+    output: "qc/{illumina}.mapping.sorted.bam",
+            "qc/{illumina}.mapping.sorted.bam.bai"
+    params: bam= "qc/{illumina}.mapping.bam",
+            sorted_base="qc/{illumina}.mapping.sorted",
+            sorted_bam="qc/{illumina}.mapping.sorted.bam"
+    message: "Converting {wildcards.illumina} spikes alignments to bam, sorting and indexing."
+    shell:
+        """
+        samtools view -bS {input} > {params.bam}
+        samtools sort -@ {THREADS} {params.bam} {params.sorted_base}
+        samtools index {params.sorted_bam}
+        """
+
 rule map_sample2contigs:
     input:
         left = expand("trim/{illumina}_FP.fastq.gz",illumina=config["illumina"]),
@@ -216,7 +231,7 @@ rule map_sample2contigs:
         assembly = "trinity/trinity_out_dir.Trinity.fasta"
     output:
        sam = "qc/{illumina}.mapping.sam"
-    message:"mapping sample reads back to Trinity assembly"
+    message:"mapping {wildcards.illumina} sample reads back to Trinity assembly"
     log: "qc/{illumina}.mapping_log.txt"
     shell:
         "bowtie2-build {input.assembly} trinity/assembly ;"
