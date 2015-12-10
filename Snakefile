@@ -37,6 +37,7 @@ QUALS = expand("plots/{data}.quality_boxplot.png",data=config["454"]["data"])
 ILLUMINA_TRIMMED_READS = expand("trim/{illumina}_{r}.fastq.gz",illumina=config["illumina"],r=["FP","FU","RP","RU"])
 ASSEMBLY = "trinity/trinity_out_dir.Trinity.fasta"
 QC_MAPPING = "qc/mapping.txt"
+SAMS = expand("qc/{illumina}.mapping.sam",illumina=config["illumina"])
 TRINITY_XPRS = expand("transcript_abundance/{illumina}/results.xprs",illumina=config["illumina"])
 TRINITY_PEP = "trinity/transcripts.fasta.transdecoder.pep"
 BLASTN = "blast/trinity_vs_nt.outfmt6"
@@ -49,6 +50,7 @@ rule all:
 	QUALS,
         ASSEMBLY,
 	QC_MAPPING,
+	SAMS,
         TRINITY_XPRS,
         BLASTN,
 	BLASTP,
@@ -162,7 +164,7 @@ rule shorten_seq_names:
             for record in SeqIO.parse(filin,"fasta"):
                 short_name = record.id.split(" ")[0]
                 records.append(SeqRecord(record.seq,id=short_name))
-            SeqIO.write(records,fileout,"fasta")        
+            SeqIO.write(records,fileout,"fasta")  
 
 ####################################
 # rule quantification with eXpress
@@ -194,7 +196,7 @@ rule estimate_transcript_abundance:
 ###################################
 # QC of the assembly
 ###################################
-rule map2contigs:
+rule map_all2contigs:
     input:
         left = "trim/all.left.fastq.gz",
         right = "trim/all.right.fastq.gz",
@@ -206,6 +208,19 @@ rule map2contigs:
     shell:
         "bowtie2-build {input.assembly} trinity/assembly ;"
         "bowtie2 -x trinity/assembly -1 {input.left} -2 {input.right} -S {output.sam} 2>{output.log}"
+
+rule map_sample2contigs:
+    input:
+        left = expand("trim/{illumina}_FP.fastq.gz",illumina=config["illumina"]),
+        right = expand("trim/{illumina}_RP.fastq.gz",illumina=config["illumina"]),
+        assembly = "trinity/trinity_out_dir.Trinity.fasta"
+    output:
+       sam = "qc/{illumina}.mapping.sam"
+    message:"mapping sample reads back to Trinity assembly"
+    log: "qc/{illumina}.mapping_log.txt"
+    shell:
+        "bowtie2-build {input.assembly} trinity/assembly ;"
+        "bowtie2 -x trinity/assembly -1 {input.left} -2 {input.right} -S {output.sam} 2>{log}"
 
 #####################################    
 # de novo assembly of the reads
@@ -280,12 +295,6 @@ rule fastx_quality_filter:
 ##############################################
 # Trimming and QC of Illumina paired-end reads
 ##############################################
-rule fastx_quality_stats_for_illumina:
-    input: 
-        FP = "trim/{illumina}_FP.fastq.gz",
-        RP = "trim/{illumina}_RP.fastq.gz"
-    output:
-
 rule trimmomatic_for_IlluminaPE:
     input:
         forward = lambda wildcards: config["basedir"] + config["illumina"][wildcards.illumina]["forward"],
@@ -302,3 +311,4 @@ rule trimmomatic_for_IlluminaPE:
         "{output.FP} {output.FU} {output.RP} {output.RU} "
         "{TRIMMOMATIC_PARAMS} "
         "2>{log}"
+
