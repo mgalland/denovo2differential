@@ -32,7 +32,12 @@ BLASTP_PARAMS = list(config["blast"]["blastp"]["params"].values())
 # THREADS
 THREADS = 8
 
-####### Outputs ######
+# Contig of interest (specify one and filter bam file)
+CONTIG = config["ContigOfInterest"]
+
+###########
+##  Outputs 
+###########
 QUALS = expand("plots/{data}.quality_boxplot.png",data=config["454"]["data"])
 ILLUMINA_TRIMMED_READS = expand("trim/{illumina}_{r}.fastq.gz",illumina=config["illumina"],r=["FP","FU","RP","RU"])
 ASSEMBLY = "trinity/trinity_out_dir.Trinity.fasta"
@@ -76,9 +81,17 @@ rule software_versions:
             fileout.write(trimmomatic_version + "\n")
 
 
-###################################################
-## Filter blastp output
-########################
+################################
+## Select alignments of interest
+################################
+rule select_reads_on_contig_of_interest:
+    input:
+        "qc/{illumina}.mapping.sorted.bam"
+    output:
+        "qc/{illumina}.mapping.sorted.1contig.bam"
+    message:"selecting reads that mapped on {CONTIG} in {input}"
+    shell:"samtools view {input} {CONTIG} > {output}" 
+        
 
 ###################################################
 # rule annotation of de novo assembled transcripts#
@@ -226,8 +239,8 @@ rule spikes_sam2bam_sort_index:
 
 rule map_sample2contigs:
     input:
-        left = expand("trim/{illumina}_FP.fastq.gz",illumina=config["illumina"]),
-        right = expand("trim/{illumina}_RP.fastq.gz",illumina=config["illumina"]),
+        left = "trim/{illumina}_FP.fastq.gz",
+        right = "trim/{illumina}_RP.fastq.gz",
         assembly = "trinity/trinity_out_dir.Trinity.fasta"
     output:
        sam = "qc/{illumina}.mapping.sam"

@@ -63,5 +63,7 @@
 		"dir": "/zfs/datastore0/software/src/trinityrnaseq_r20140413p1/trinity-plugins/TransDecoder_r20131110/TransDecoder",
 		"min_prot_length": "-m 200",
 		"min_orf_nucleotide_length": "--retain_long_orfs 900"
+	},
+	"ContigOfInterest": "TRINITY_DN163138_c1_g1_i1"
 	}
 }
